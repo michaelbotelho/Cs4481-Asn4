@@ -12,18 +12,41 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
     }
 
 
-    // Declare variables for prediction, error, neighboring pixels, visited pixels, unique values counter, other value (binary mode), and gradients (continuous-tone mode)
-    unsigned char prediction, error;
-    unsigned char* neighbors = calloc(7,  sizeof(unsigned char)); // Indices are WW, W, NW, N, NE, NN, NNE respectively
-    unsigned char* visited = calloc(7,  sizeof(unsigned char));
-    int count_distinct = 0;
-    unsigned char s1;
-    unsigned char dh, dv;
+    // Creating file names and writing file headers
+    char compressed_file_name[256];
+    char errors_file_name[256];
+    snprintf(compressed_file_name, 256, "%s.%d.DPCM", in_PGM_filename_Ptr, prediction_rule);
+    snprintf(errors_file_name, 256, "%s.%d.errors.csv", in_PGM_filename_Ptr, prediction_rule);
 
+    FILE *compressed_fptr = fopen(compressed_file_name, "w");
+    FILE *errors_fptr = fopen(errors_file_name, "w");
+    fprintf(compressed_fptr, "P5\n");
+    fprintf(compressed_fptr, "%d %d\n", img.width, img.height);
+    fprintf(compressed_fptr, "%d\n", img.maxGrayValue);
+    fprintf(compressed_fptr, "%d\n", prediction_rule);
+    fprintf(errors_fptr, "ABSOLUTE prediction error value,frequency\n"); // Prediction error histogram data  
+
+
+    // Declare variables for encoding algorithm
+    int prediction;
+    int* abs_errors = calloc(img.maxGrayValue, sizeof(int));
+    int* errors = calloc(img.width * img.height, sizeof(int));
+    int* T_values = calloc(img.width * img.height, sizeof(int));
+    int* neighbors = calloc(7,  sizeof(int)); // Indices are WW, W, NW, N, NE, NN, NNE respectively
+    int* visited = calloc(7,  sizeof(int));
+    int count_distinct = 0;
+    int pixel = 0;
+    int s1;
+    int dh, dv;
+
+
+    // Iterate through pixels in Raster scan fashion 
     for (int h = 0; h < img.height; h++) 
     {
         for (int w = 0; w < img.width; w++) 
         {
+            T_values[pixel] = 255; // Setting the value at current pixel index in T_values to large number so decoder will ignore any index < 0 and > 2 (If binary mode does not overwrite it)
+
             // Handle pixels in first row
             if (h == 0) 
             {
@@ -31,15 +54,11 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                 if (w == 0) 
                 {
                     prediction = 128;
-                    error = img.image[h][w] - prediction;
-                    // Write to encoded file
                 }
                 // Handle remaining pixels in the first row
                 else 
                 {
                     prediction = img.image[h][w - 1]; // West pixel
-                    error = img.image[h][w] - prediction;
-                    // Write to encoded file
 // DEBUG printf("%u\n", prediction);
                 }
             }
@@ -47,8 +66,6 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
             else if (h == 1 || w < 2 || w == img.width - 1)
             {
                 prediction = img.image[h - 1][w]; // North pixel
-                error = img.image[h][w] - prediction;
-                // Write to encoded file
             }
             // Handle all other pixels in the image
             else 
@@ -57,22 +74,16 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                 if (prediction_rule == 1) 
                 {
                     prediction = img.image[h][w - 1]; // West pixel
-                    error = img.image[h][w] - prediction;
-                    // Write to encoded file
                 }
                 // Use North pixel for prediction
                 else if (prediction_rule == 2)
                 {
                     prediction = img.image[h - 1][w]; // North pixel
-                    error = img.image[h][w] - prediction;
-                    // Write to encoded file
                 }
                 // Use W/2 + N/2 for prediction
                 else if (prediction_rule == 3)
                 {   
                     prediction = (img.image[h][w - 1] / 2) + (img.image[h - 1][w] / 2); // W/2 + H/2
-                    error = img.image[h][w] - prediction;
-                    // Write to encoded file
                 }
                 // Use CALIC for prediction
                 else if (prediction_rule == 4)
@@ -117,20 +128,17 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                     // Binary mode
                     if (count_distinct < 3) 
                     {
-                        // Encoded file:
-                        // T0 T1 T2 error error
-                        // Where if T2 is read by decoder it automatically knows the next value is the error 
-                        // Do other prediction rules (1, 2, and 3) also mean to write prediction error or just CALIC ??
-                        
                         // T = 0 if current pixel = W
                         if (img.image[h][w] == neighbors[1]) 
                         {
-                            // Write T0 to encoded file
+                            // Write T0 to T-values array
+                            T_values[pixel] = 0;
                         }
                         // T = 1 if current pixel = s1 (other value)
                         else if (img.image[h][w] == s1)
                         {
-                            // Write T1 to encoded file
+                            // Write T1 to T-values array
+                            T_values[pixel] = 1;
                         }
                         // T = 2 otherwise (escape signal to continuous-tone mode)
                         else 
@@ -171,8 +179,8 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                             }
                         }
 
-                        error = img.image[h][w] - prediction;
-                        // Write to encoded file (along with T2 indicator)
+                        // Write T2 to T_values array
+                        T_values[pixel] = 2;
                     }
 
                     // Continuous-tone mode
@@ -212,16 +220,61 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                                 }
                             }
                         }
-
-                        error = img.image[h][w] - prediction;
-                        // Write to encoded file
                     }
                 }
             }
+            
+            // Write prediction error to errors array (in the case of CALIC Binary mode T, decoder will ignore this index)
+            // Increment pixel pointer to index in T_values and errors array
+            errors[pixel] = img.image[h][w] - prediction;
+            pixel++;
         } // next column (w)
     } // next row (h)
 
 
+    // Write prediction error array (and T values array if CALIC prediction rule applied) to compressed file
+    // Simultaneously count prediction error frequencies and accumulate average
+    int count = 0;
+    for (int i = 0; i < img.width * img.height; i++)
+    {
+        fprintf(compressed_fptr, "%d ", errors[i]);
+        if (T_values[i] >= 2) // Make sure value at errors[i] is relevant (no prediction error is sent whe T = 0 or T = 1)
+        {
+            abs_errors[abs(errors[i])]++;
+            *avg_abs_error_Ptr += abs(errors[i]);
+            count++;
+        }
+    }
+    *avg_abs_error_Ptr /= count;
+    fprintf(compressed_fptr, "\n");
+    // Write T_values array to compressed file if CALIC rule applied
+    if (prediction_rule == 4)
+    {
+        for (int i = 0; i < img.width * img.height; i++)
+        {
+            fprintf(compressed_fptr, "%d ", T_values[i]);
+        }
+    }
+    // Write Absolute errors to file and calculate avg_abs_errors
+    for (int i = 0; i < img.maxGrayValue; i++)
+    {
+        if (abs_errors[i] > 0)
+        {   
+            *std_abs_error_ptr += abs(i - *avg_abs_error_Ptr) * abs(i - *avg_abs_error_Ptr);
+            fprintf(errors_fptr, "%d,%d\n", i, abs_errors[i]);
+        }
+    }
+    // Finish calculating standard deviation
+    *std_abs_error_ptr = sqrt(*std_abs_error_ptr / count);
+
+
+    // Free memory
+    fclose(compressed_fptr);
+    fclose(errors_fptr);
+
+    free(abs_errors);
+    free(errors);
+    free(T_values);
     free(neighbors);
     free(visited);
     free_PGM_Image(&img);
