@@ -44,8 +44,8 @@ void Decode_Using_DPCM (char* in_filename_Ptr)
 
     // Declare variables for decoding algorithm
     int prediction;
-    int* neighbors = calloc(7,  sizeof(int)); // Indices are WW, W, NW, N, NE, NN, NNE respectively
-    int* visited = calloc(7,  sizeof(int));
+    int* neighbors = calloc(8,  sizeof(int)); // Indices are WW, W, NW, N, NE, NN, NNE, Current respectively
+    int* visited = calloc(8,  sizeof(int));
     int count_distinct = 0;
     int pixel = 0;
     int s1;
@@ -116,15 +116,18 @@ void Decode_Using_DPCM (char* in_filename_Ptr)
                     neighbors[4] = img.image[h - 1][w + 1]; // NE
                     neighbors[5] = img.image[h - 2][w];     // NN
                     neighbors[6] = img.image[h - 2][w + 1]; // NNE
+                    neighbors[7] = img.image[h][w]; // Current Pixel
+
 
                     // Check distinct values in neighboring pixels
-                    for(int i = 0; i < 7; i++)
+                    for(int i = 0; i < 8; i++)
                     {
+                        // Getting value other than W for binary mode (will be ignored if > 2 unique values are found)
+                        if (neighbors[i] != neighbors[0]) s1 = neighbors[i];
+
                         // Only if unvisited
                         if(visited[i] == 0)
                         { 
-                            // Getting vale other than W for binary mode (will be ignored if > 2 unique values are found)
-                            s1 = neighbors[i];
                             for(int j = i + 1; j < 7; j++){
                                 // If item appears again in the array
                                 if(neighbors[i] == neighbors[j]){
@@ -137,7 +140,7 @@ void Decode_Using_DPCM (char* in_filename_Ptr)
                         }
                     }
 
-
+                
                     // Binary mode
                     if (count_distinct < 3) 
                     {

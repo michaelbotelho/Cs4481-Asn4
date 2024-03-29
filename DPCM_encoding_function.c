@@ -17,8 +17,8 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
     int* abs_errors = calloc(img.maxGrayValue, sizeof(int));
     int* errors = calloc(img.width * img.height, sizeof(int));
     int* T_values = calloc(img.width * img.height, sizeof(int));
-    int* neighbors = calloc(7,  sizeof(int)); // Indices are WW, W, NW, N, NE, NN, NNE respectively
-    int* visited = calloc(7,  sizeof(int));
+    int* neighbors = calloc(8,  sizeof(int)); // Indices are WW, W, NW, N, NE, NN, NNE, Current respectively
+    int* visited = calloc(8,  sizeof(int));
     int count_distinct = 0;
     int pixel = 0;
     int s1;
@@ -44,13 +44,14 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                 else 
                 {
                     prediction = img.image[h][w - 1]; // West pixel
-// DEBUG printf("%u\n", prediction);
                 }
+                errors[pixel] = img.image[h][w] - prediction;
             }
             // Handle pixels in second row, remaining pixels in the first two columns, and the remaining pixels in the last column
             else if (h == 1 || w < 2 || w == img.width - 1)
             {
                 prediction = img.image[h - 1][w]; // North pixel
+                errors[pixel] = img.image[h][w] - prediction;
             }
             // Handle all other pixels in the image
             else 
@@ -59,16 +60,19 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                 if (prediction_rule == 1) 
                 {
                     prediction = img.image[h][w - 1]; // West pixel
+                    errors[pixel] = img.image[h][w] - prediction;
                 }
                 // Use North pixel for prediction
                 else if (prediction_rule == 2)
                 {
                     prediction = img.image[h - 1][w]; // North pixel
+                    errors[pixel] = img.image[h][w] - prediction;
                 }
                 // Use W/2 + N/2 for prediction
                 else if (prediction_rule == 3)
                 {   
                     prediction = (img.image[h][w - 1] / 2) + (img.image[h - 1][w] / 2); // W/2 + H/2
+                    errors[pixel] = img.image[h][w] - prediction;
                 }
                 // Use CALIC for prediction
                 else if (prediction_rule == 4)
@@ -88,15 +92,18 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                     neighbors[4] = img.image[h - 1][w + 1]; // NE
                     neighbors[5] = img.image[h - 2][w];     // NN
                     neighbors[6] = img.image[h - 2][w + 1]; // NNE
+                    neighbors[7] = img.image[h][w]; // Current Pixel
+
 
                     // Check distinct values in neighboring pixels
-                    for(int i = 0; i < 7; i++)
+                    for(int i = 0; i < 8; i++)
                     {
+                        // Getting value other than W for binary mode (will be ignored if > 2 unique values are found)
+                        if (neighbors[i] != neighbors[0]) s1 = neighbors[i];
+
                         // Only if unvisited
                         if(visited[i] == 0)
                         { 
-                            // Getting vale other than W for binary mode (will be ignored if > 2 unique values are found)
-                            s1 = neighbors[i];
                             for(int j = i + 1; j < 7; j++){
                                 // If item appears again in the array
                                 if(neighbors[i] == neighbors[j]){
@@ -113,18 +120,10 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                     // Binary mode
                     if (count_distinct < 3) 
                     {
-                        // T = 0 if current pixel = W
-                        if (img.image[h][w] == neighbors[1]) 
-                        {
-                            // Write T = 0 to T-values array
-                            T_values[pixel] = 0;
-                        }
-                        // T = 1 if current pixel = s1 (other value)
-                        else if (img.image[h][w] == s1)
-                        {
-                            // Write T = 1 to T-values array
-                            T_values[pixel] = 1;
-                        }
+                        // Write T = 0 if current pixel = W
+                        if (img.image[h][w] == neighbors[0]) T_values[pixel] = 0;
+                        // Write T = 1 if current pixel = s1 (other value)
+                        else if (img.image[h][w] == s1) T_values[pixel] = 1;
                         // T = 2 otherwise (escape signal to continuous-tone mode)
                         else 
                         {
@@ -162,6 +161,7 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                                     }
                                 }
                             }
+                            errors[pixel] = img.image[h][w] - prediction;
                         }
                     }
 
@@ -202,13 +202,10 @@ void Encode_Using_DPCM (char* in_PGM_filename_Ptr, int prediction_rule, float* a
                                 }
                             }
                         }
+                        errors[pixel] = img.image[h][w] - prediction;
                     }
                 }
             }
-            
-            // Write prediction error to errors array (in the case of CALIC Binary mode T, decoder will ignore this index)
-            // Increment pixel pointer to index in T_values and errors array
-            errors[pixel] = img.image[h][w] - prediction;
             pixel++;
         } // next column (w)
     } // next row (h)
