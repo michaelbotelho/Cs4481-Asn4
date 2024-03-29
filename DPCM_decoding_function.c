@@ -4,7 +4,6 @@
 void Decode_Using_DPCM (char* in_filename_Ptr)
 {
     // Open given file and Parse headers
-    char buffer[256];
     FILE *compressed_fptr = fopen(in_filename_Ptr, "r");
     if(compressed_fptr == NULL) exit(0);
     int prediction_rule, width, height, max_gray_value; 

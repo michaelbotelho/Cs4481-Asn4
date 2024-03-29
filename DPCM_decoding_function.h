@@ -1,5 +1,7 @@
 #include "libpnm.h"
 #include "math.h"
+#include "stdint.h"
+#include "time.h"
 #include "string.h"
 
 

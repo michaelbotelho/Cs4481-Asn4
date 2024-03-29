@@ -3,8 +3,16 @@
 
 int main (int argc, char* argv[])
 {
-    // Call DPCM decoding function
-    Decode_Using_DPCM(argv[1]);
+	uintmax_t start;	/* starting tick value */
+	uintmax_t end;		/* ending tick value */
 
-    printf("Compression time here ...\n");
+
+    // Call DPCM decoding function
+    start = clock(); 	/* mark the start time */
+    Decode_Using_DPCM(argv[1]);
+	end = clock(); 		/* mark the end time */
+
+
+    // Report decompression time    
+	printf("Decompression time: %8.6f seconds\n", (double)(end-start)/CLOCKS_PER_SEC);
 }

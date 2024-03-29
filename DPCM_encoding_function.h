@@ -1,5 +1,7 @@
 #include "libpnm.h"
 #include "math.h"
+#include "stdint.h"
+#include "time.h"
 
 
 #ifndef _DPCM_ENCODING_FUNCTION_
